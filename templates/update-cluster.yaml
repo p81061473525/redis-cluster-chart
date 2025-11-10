@@ -1,0 +1,134 @@
+{{- /*
+  Redis Cluster Update Job (Bitnami 原版，官方 image)
+  用於自動將新增的 StatefulSet Pod 加入 cluster
+*/}}
+
+{{- if and .Values.cluster.update.addNodes (or (and .Values.cluster.externalAccess.enabled .Values.cluster.externalAccess.service.loadBalancerIP) (not .Values.cluster.externalAccess.enabled)) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "common.names.fullname" . }}-cluster-update
+  namespace: {{ .Release.Namespace | quote }}
+  labels:
+    app.kubernetes.io/name: {{ include "common.names.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    "helm.sh/hook": {{ .Values.updateJob.helmHook }}
+    {{- if or .Values.updateJob.annotations .Values.commonAnnotations }}
+    {{- $annotations := include "common.tplvalues.merge" ( dict "values" ( list .Values.updateJob.annotations .Values.commonAnnotations ) "context" . ) }}
+    {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $) | nindent 4 }}
+    {{- end }}
+spec:
+  activeDeadlineSeconds: {{ .Values.updateJob.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "common.names.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      # serviceAccountName: {{ include "redis-cluster.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.updateJob.automountServiceAccountToken }}
+      restartPolicy: OnFailure
+      {{- if .Values.updateJob.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.updateJob.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.updateJob.affinity }}
+      affinity:
+{{ toYaml .Values.updateJob.affinity | indent 8 }}
+      {{- end }}
+      {{- if .Values.updateJob.tolerations }}
+      tolerations:
+{{ toYaml .Values.updateJob.tolerations | indent 8 }}
+      {{- end }}
+      containers:
+        - name: trigger
+          image: library/redis:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          command: ['/bin/bash', '-c']
+          args:
+            - |
+              echo "Starting Redis cluster update..."
+
+              # 如果有設定密碼
+              {{- if .Values.usePassword }}
+              export REDISCLI_AUTH={{ ternary "`cat $REDIS_PASSWORD_FILE`" "$REDIS_PASSWORD" .Values.usePasswordFiles }}
+              {{- end }}
+
+              # 第一個 node IP
+              firstNodeIP="{{ template "common.names.fullname" . }}-0.{{ template "common.names.fullname" . }}-headless"
+
+              {{- if .Values.cluster.externalAccess.enabled }}
+              # 外部 IP 擴容
+              newNodeCounter=0
+              for nodeIP in $(echo "{{ .Values.cluster.update.newExternalIPs }}" | tr ',' ' '); do
+                until [[ $(redis-cli -h "$nodeIP" -p {{ .Values.redis.containerPorts.redis }} ping) == "PONG" ]]; do
+                  echo "Node $nodeIP not ready..."
+                  sleep 5
+                done
+
+                slave=()
+                if (( $REDIS_CLUSTER_REPLICAS >= 1 )) && (( newNodeCounter % (( $REDIS_CLUSTER_REPLICAS + 1 )) )); then
+                  slave+=("--cluster-slave")
+                fi
+
+                until redis-cli --cluster add-node "${nodeIP}:{{ .Values.redis.containerPorts.redis }}" "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" ${slave[@]}; do
+                  echo "Failed to add node $nodeIP, retrying..."
+                  sleep 5
+                done
+
+                ((newNodeCounter+=1))
+              done
+
+              until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
+                echo "Rebalance failed, retrying..."
+                sleep 5
+              done
+
+              {{- else }}
+              # 內部 StatefulSet 擴容
+              currentMasterNodesNum=$(( {{ .Values.cluster.update.currentNumberOfNodes }} / (( {{ .Values.cluster.update.currentNumberOfReplicas }} + 1 )) ))
+              slaveNodesEndPos=$(( {{ .Values.cluster.update.currentNumberOfNodes }} + (($REDIS_CLUSTER_REPLICAS - {{ .Values.cluster.update.currentNumberOfReplicas }})) * $currentMasterNodesNum ))
+
+              for node in $(seq $((1 + {{ .Values.cluster.update.currentNumberOfNodes }})) {{ .Values.cluster.nodes }}); do
+                newNodeIndex=$((node - 1))
+                newNodeIP="{{ template "common.names.fullname" . }}-${newNodeIndex}.{{ template "common.names.fullname" . }}-headless"
+
+                until [[ $(redis-cli -h "$newNodeIP" -p {{ .Values.redis.containerPorts.redis }} ping) == "PONG" ]]; do
+                  echo "Node $newNodeIP not ready..."
+                  sleep 5
+                done
+
+                slave=()
+                if (( $REDIS_CLUSTER_REPLICAS >= 1 )) && (( (( $newNodeIndex < $slaveNodesEndPos )) || (( (( $newNodeIndex >= $slaveNodesEndPos )) && (( $newNodeIndex % (( $REDIS_CLUSTER_REPLICAS + 1 )) )) )) )); then
+                  slave+=("--cluster-slave")
+                fi
+
+                until redis-cli --cluster add-node "${newNodeIP}:{{ .Values.redis.containerPorts.redis }}" "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" ${slave[@]}; do
+                  echo "Failed to add node $newNodeIP, retrying..."
+                  sleep 5
+                done
+              done
+
+              until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
+                echo "Rebalance failed, retrying..."
+                sleep 5
+              done
+              {{- end }}
+          env:
+            - name: BITNAMI_DEBUG
+              value: {{ ternary "true" "false" .Values.image.debug | quote }}
+            {{- if .Values.usePassword }}
+            {{- if .Values.usePasswordFiles }}
+            - name: REDIS_PASSWORD_FILE
+              value: "/opt/redis/secrets/redis-password"
+            {{- else }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "redis-cluster.secretName" . }}
+                  key: {{ template "redis-cluster.secretPasswordKey" . }}
+            {{- end }}
+            {{- end }}
+{{- end }}

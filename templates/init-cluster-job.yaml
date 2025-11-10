@@ -1,0 +1,47 @@
+{{- if .Values.cluster.init }}
+{{- /* 檢查 cluster.nodes 是否為偶數 */}}
+{{- if mod .Values.cluster.nodes 2 }}
+{{- fail "cluster.nodes 必須是偶數，因為 master + replica 會形成偶數總數" }}
+{{- end }}
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redis-cluster-init
+  namespace: {{ .Release.Namespace }}
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: redis-cluster-init
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          command:
+            - "sh"
+            - "-c"
+            - |
+              NODES={{ .Values.cluster.nodes }}
+              echo "Waiting for all $NODES Redis pods to be ready..."
+              i=0
+              while [ $i -lt $NODES ]; do
+                until redis-cli -h redis-cluster-$i.redis-cluster-headless ping | grep PONG; do
+                  echo "Waiting for redis-cluster-$i..."
+                  sleep 2
+                done
+                i=$((i+1))
+              done
+
+              echo "All Redis pods are ready. Creating cluster..."
+              NODE_LIST=""
+              i=0
+              while [ $i -lt $NODES ]; do
+                NODE_LIST="$NODE_LIST redis-cluster-$i.redis-cluster-headless:6379"
+                i=$((i+1))
+              done
+
+              echo "Cluster nodes: $NODE_LIST"
+              redis-cli --cluster create $NODE_LIST --cluster-replicas 1 --cluster-yes
+
+      serviceAccountName: default
+{{- end }}
