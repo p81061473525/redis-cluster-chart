@@ -73,7 +73,7 @@ diagnosticMode:
 image:
   registry: docker.io
   repository: library/redis 
-  tag: latest
+  tag: 7.2.11
   digest: ""
   ## Specify a imagePullPolicy
   ## Defaults to 'Always' if image tag is 'latest', else set to 'IfNotPresent'
@@ -409,23 +409,41 @@ podSecurityPolicy:
 ##
 
 redis:
-  ## @param redis.command Redis&reg; entrypoint string. The command `redis-server` is executed if this is not provided
-  ##
   command:
-    - "redis-server"
-  ## @param redis.args Arguments for the provided command if needed
-  ##
+    - /bin/bash
+    - -c
   args:
-    - "--cluster-enabled"
-    - "yes"
-    - "--cluster-config-file"
-    - "/bitnami/redis/data/nodes.conf"
-    - "--cluster-node-timeout"
-    - "5000"
-    - "--appendonly"
-    - "yes"
-    - "--dir"
-    - "/bitnami/redis/data"
+    - >
+      exec redis-server /opt/bitnami/redis/etc/redis-default.conf --requirepass "$REDIS_PASSWORD"
+
+  # args:
+  #   - >
+  #     if ! [[ -f /opt/bitnami/redis/etc/redis.conf ]]; then
+  #       echo "COPYING FILE";
+  #       cp /opt/bitnami/redis/etc/redis-default.conf /opt/bitnami/redis/etc/redis.conf;
+  #       echo "" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "requirepass $REDIS_PASSWORD" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "cluster-enabled yes" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "cluster-config-file /bitnami/redis/data/nodes.conf" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "cluster-node-timeout 5000" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "appendonly yes" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "dir /bitnami/redis/data" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "protected-mode no" >> /opt/bitnami/redis/etc/redis.conf;
+  #       echo "bind 0.0.0.0" >> /opt/bitnami/redis/etc/redis.conf;
+  #     fi;
+  #     exec redis-server /opt/bitnami/redis/etc/redis.conf
+
+
+  # args:
+  #   - >
+  #     exec redis-server --cluster-enabled yes \
+  #       --cluster-config-file /bitnami/redis/data/nodes.conf \
+  #       --cluster-node-timeout 5000 \
+  #       --appendonly yes \
+  #       --dir /bitnami/redis/data \
+  #       --requirepass "$REDIS_PASSWORD"
+
+
 
   updateStrategy:
     ## StrategyType
@@ -501,7 +519,16 @@ redis:
   ## @param redis.configmap Additional Redis&reg; configuration for the nodes
   ## ref: https://redis.io/topics/config
   ##
-  configmap: ""
+
+  # 使用 configmap 注入 redis.conf
+  configmap: |
+    cluster-enabled yes
+    cluster-config-file /bitnami/redis/data/nodes.conf
+    cluster-node-timeout 5000
+    appendonly yes
+    dir /bitnami/redis/data
+    protected-mode no
+    bind 0.0.0.0
   ## @param redis.extraEnvVars An array to add extra environment variables
   ## For example:
   ##  - name: BEARER_AUTH
@@ -780,7 +807,7 @@ cluster:
   ##
   ## @param cluster.nodes The number of master nodes should always be >= 3, otherwise cluster creation will fail
   ##
-  nodes: 6
+  nodes: 8
   ## @param cluster.replicas Number of replicas for every master in the cluster
   ## Parameter to be passed as --cluster-replicas to the redis-cli --cluster create
   ## 1 means that we want a replica for every master created
@@ -829,7 +856,7 @@ cluster:
     ## @param cluster.update.addNodes Boolean to specify if you want to add nodes after the upgrade
     ## Setting this to true a hook will add nodes to the Redis&reg; cluster after the upgrade. currentNumberOfNodes and currentNumberOfReplicas is required
     ##
-    addNodes: false
+    addNodes: true
     ## @param cluster.update.currentNumberOfNodes Number of currently deployed Redis&reg; nodes
     ##
     currentNumberOfNodes: 6

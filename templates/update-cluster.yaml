@@ -1,7 +1,7 @@
 {{- /*
-  Redis Cluster Update Job (Bitnami 原版，官方 image)
-  用於自動將新增的 StatefulSet Pod 加入 cluster
-*/}}
+Redis Cluster Update Job (Bitnami 官方 image)
+自動將新增 StatefulSet Pod 加入 cluster
+*/ -}}
 
 {{- if and .Values.cluster.update.addNodes (or (and .Values.cluster.externalAccess.enabled .Values.cluster.externalAccess.service.loadBalancerIP) (not .Values.cluster.externalAccess.enabled)) }}
 apiVersion: batch/v1
@@ -27,7 +27,6 @@ spec:
         app.kubernetes.io/name: {{ include "common.names.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
-      # serviceAccountName: {{ include "redis-cluster.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.updateJob.automountServiceAccountToken }}
       restartPolicy: OnFailure
       {{- if .Values.updateJob.nodeSelector }}
@@ -53,40 +52,16 @@ spec:
 
               # 如果有設定密碼
               {{- if .Values.usePassword }}
-              export REDISCLI_AUTH={{ ternary "`cat $REDIS_PASSWORD_FILE`" "$REDIS_PASSWORD" .Values.usePasswordFiles }}
+              {{- if .Values.usePasswordFile }}
+              export REDISCLI_AUTH=$(cat /opt/redis/secrets/redis-password)
+              {{- else }}
+              export REDISCLI_AUTH="{{ .Values.password }}"
+              {{- end }}
               {{- end }}
 
-              # 第一個 node IP
               firstNodeIP="{{ template "common.names.fullname" . }}-0.{{ template "common.names.fullname" . }}-headless"
+              echo "First node: $firstNodeIP"
 
-              {{- if .Values.cluster.externalAccess.enabled }}
-              # 外部 IP 擴容
-              newNodeCounter=0
-              for nodeIP in $(echo "{{ .Values.cluster.update.newExternalIPs }}" | tr ',' ' '); do
-                until [[ $(redis-cli -h "$nodeIP" -p {{ .Values.redis.containerPorts.redis }} ping) == "PONG" ]]; do
-                  echo "Node $nodeIP not ready..."
-                  sleep 5
-                done
-
-                slave=()
-                if (( $REDIS_CLUSTER_REPLICAS >= 1 )) && (( newNodeCounter % (( $REDIS_CLUSTER_REPLICAS + 1 )) )); then
-                  slave+=("--cluster-slave")
-                fi
-
-                until redis-cli --cluster add-node "${nodeIP}:{{ .Values.redis.containerPorts.redis }}" "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" ${slave[@]}; do
-                  echo "Failed to add node $nodeIP, retrying..."
-                  sleep 5
-                done
-
-                ((newNodeCounter+=1))
-              done
-
-              until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
-                echo "Rebalance failed, retrying..."
-                sleep 5
-              done
-
-              {{- else }}
               # 內部 StatefulSet 擴容
               currentMasterNodesNum=$(( {{ .Values.cluster.update.currentNumberOfNodes }} / (( {{ .Values.cluster.update.currentNumberOfReplicas }} + 1 )) ))
               slaveNodesEndPos=$(( {{ .Values.cluster.update.currentNumberOfNodes }} + (($REDIS_CLUSTER_REPLICAS - {{ .Values.cluster.update.currentNumberOfReplicas }})) * $currentMasterNodesNum ))
@@ -111,16 +86,18 @@ spec:
                 done
               done
 
+              # 重新平衡 Cluster
               until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
                 echo "Rebalance failed, retrying..."
                 sleep 5
               done
-              {{- end }}
+
+              echo "Redis cluster update completed!"
           env:
             - name: BITNAMI_DEBUG
               value: {{ ternary "true" "false" .Values.image.debug | quote }}
             {{- if .Values.usePassword }}
-            {{- if .Values.usePasswordFiles }}
+            {{- if .Values.usePasswordFile }}
             - name: REDIS_PASSWORD_FILE
               value: "/opt/redis/secrets/redis-password"
             {{- else }}

@@ -157,11 +157,11 @@ spec:
               value: "{{ $count := .Values.cluster.nodes | int }}{{ range $i, $v := until $count }}{{ include "common.names.fullname" $ }}-{{ $i }}.{{ template "common.names.fullname" $ }}-headless {{ end }}"
             {{- end }}
             {{- if .Values.usePassword }}
-            - name: REDISCLI_AUTH
-              valueFrom:
-                secretKeyRef:
-                  name: {{ template "redis-cluster.secretName" . }}
-                  key: {{ template "redis-cluster.secretPasswordKey" . }}
+            # - name: REDISCLI_AUTH
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: {{ template "redis-cluster.secretName" . }}
+            #       key: {{ template "redis-cluster.secretPasswordKey" . }}
             {{- if .Values.usePasswordFile }}
             - name: REDIS_PASSWORD_FILE
               value: "/opt/bitnami/redis/secrets/redis-password"

@@ -1,14 +1,11 @@
-{{- if .Values.cluster.init }}
-{{- /* 檢查 cluster.nodes 是否為偶數 */}}
-{{- if mod .Values.cluster.nodes 2 }}
-{{- fail "cluster.nodes 必須是偶數，因為 master + replica 會形成偶數總數" }}
-{{- end }}
-
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: redis-cluster-init
   namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 3
   template:
@@ -17,6 +14,12 @@ spec:
       containers:
         - name: redis-cluster-init
           image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ template "redis-cluster.secretName" . }}
+                  key: {{ template "redis-cluster.secretPasswordKey" . }}
           command:
             - "sh"
             - "-c"
@@ -25,7 +28,7 @@ spec:
               echo "Waiting for all $NODES Redis pods to be ready..."
               i=0
               while [ $i -lt $NODES ]; do
-                until redis-cli -h redis-cluster-$i.redis-cluster-headless ping | grep PONG; do
+                until redis-cli -h redis-cluster-$i.redis-cluster-headless -a $REDIS_PASSWORD ping | grep PONG; do
                   echo "Waiting for redis-cluster-$i..."
                   sleep 2
                 done
@@ -41,7 +44,6 @@ spec:
               done
 
               echo "Cluster nodes: $NODE_LIST"
-              redis-cli --cluster create $NODE_LIST --cluster-replicas 1 --cluster-yes
+              redis-cli --cluster create $NODE_LIST --cluster-replicas 1 -a $REDIS_PASSWORD --cluster-yes
 
       serviceAccountName: default
-{{- end }}
