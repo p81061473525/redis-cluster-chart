@@ -301,9 +301,10 @@ persistence:
   ##
   enabled: true
   ## @param persistence.path Path to mount the volume at, to use other images Redis&reg; images.
+  ## For native Redis image (library/redis), use /data
+  ## For Bitnami Redis image, use /bitnami/redis/data
   ##
-  path: /bitnami/redis/data
-  # path: /data
+  path: /data
   ## @param persistence.subPath The subdirectory of the volume to mount to, useful in dev environments and one PV for multiple services
   ##
   subPath: ""
@@ -409,39 +410,14 @@ podSecurityPolicy:
 ##
 
 redis:
-  command:
-    - /bin/bash
-    - -c
-  args:
-    - >
-      exec redis-server /opt/bitnami/redis/etc/redis-default.conf --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
-
-  # args:
-  #   - >
-  #     if ! [[ -f /opt/bitnami/redis/etc/redis.conf ]]; then
-  #       echo "COPYING FILE";
-  #       cp /opt/bitnami/redis/etc/redis-default.conf /opt/bitnami/redis/etc/redis.conf;
-  #       echo "" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "requirepass $REDIS_PASSWORD" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "cluster-enabled yes" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "cluster-config-file /bitnami/redis/data/nodes.conf" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "cluster-node-timeout 5000" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "appendonly yes" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "dir /bitnami/redis/data" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "protected-mode no" >> /opt/bitnami/redis/etc/redis.conf;
-  #       echo "bind 0.0.0.0" >> /opt/bitnami/redis/etc/redis.conf;
-  #     fi;
-  #     exec redis-server /opt/bitnami/redis/etc/redis.conf
-
-
-  # args:
-  #   - >
-  #     exec redis-server --cluster-enabled yes \
-  #       --cluster-config-file /bitnami/redis/data/nodes.conf \
-  #       --cluster-node-timeout 5000 \
-  #       --appendonly yes \
-  #       --dir /bitnami/redis/data \
-  #       --requirepass "$REDIS_PASSWORD"
+  ## @param redis.command Redis&reg; entrypoint string. The command `redis-server` is executed if this is not provided
+  ## Leave empty to use the default startup script from scripts-configmap
+  ##
+  command: []
+  ## @param redis.args Arguments for the provided command if needed
+  ## Leave empty to use the default startup script from scripts-configmap
+  ##
+  args: []
 
 
 
@@ -520,15 +496,10 @@ redis:
   ## ref: https://redis.io/topics/config
   ##
 
-  # 使用 configmap 注入 redis.conf
-  configmap: |
-    cluster-enabled yes
-    cluster-config-file /bitnami/redis/data/nodes.conf
-    cluster-node-timeout 5000
-    appendonly yes
-    dir /bitnami/redis/data
-    protected-mode no
-    bind 0.0.0.0
+  ## @param redis.configmap Additional Redis&reg; configuration for the nodes (appended to default config)
+  ## These settings are already included in the default configmap, so leave empty unless you need custom overrides
+  ##
+  configmap: ""
   ## @param redis.extraEnvVars An array to add extra environment variables
   ## For example:
   ##  - name: BEARER_AUTH

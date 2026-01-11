@@ -1,12 +1,118 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: redis-cluster-scripts
-  namespace: default
-  labels:
-    app.kubernetes.io/name: redis-cluster
-    app.kubernetes.io/instance: redis-cluster
+  name: {{ include "common.names.fullname" . }}-scripts
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
 data:
+  start-node.sh: |-
+    #!/bin/bash
+    set -e
+
+    REDIS_DATA_DIR="{{ .Values.persistence.path }}"
+    REDIS_CONF_DIR="/etc/redis"
+    REDIS_CONF_FILE="${REDIS_CONF_DIR}/redis.conf"
+    NODES_CONF_FILE="${REDIS_DATA_DIR}/nodes.conf"
+
+    # 取得當前 Pod 的 IP 和 hostname
+    POD_IP=$(hostname -i)
+    POD_HOSTNAME=$(hostname)
+    HEADLESS_SERVICE="{{ include "common.names.fullname" . }}-headless"
+    NAMESPACE="{{ .Release.Namespace }}"
+    CLUSTER_DOMAIN="{{ .Values.clusterDomain }}"
+
+    # 完整的 DNS 名稱
+    POD_FQDN="${POD_HOSTNAME}.${HEADLESS_SERVICE}.${NAMESPACE}.svc.${CLUSTER_DOMAIN}"
+
+    # 處理 external access 模式
+    if [ -n "${REDIS_EXTERNAL_IP}" ]; then
+        ANNOUNCE_IP="${REDIS_EXTERNAL_IP}"
+        ANNOUNCE_HOSTNAME=""
+        ENDPOINT_TYPE="ip"
+    elif [ -n "${REDIS_EXTERNAL_HOSTNAME}" ]; then
+        ANNOUNCE_IP="${POD_IP}"
+        ANNOUNCE_HOSTNAME="${REDIS_EXTERNAL_HOSTNAME}"
+        ENDPOINT_TYPE="hostname"
+    else
+        ANNOUNCE_IP="${POD_IP}"
+        ANNOUNCE_HOSTNAME="${POD_FQDN}"
+        ENDPOINT_TYPE="hostname"
+    fi
+
+    echo "Starting Redis Cluster Node..."
+    echo "POD_IP: ${POD_IP}"
+    echo "POD_HOSTNAME: ${POD_HOSTNAME}"
+    echo "POD_FQDN: ${POD_FQDN}"
+    echo "ANNOUNCE_IP: ${ANNOUNCE_IP}"
+    echo "ANNOUNCE_HOSTNAME: ${ANNOUNCE_HOSTNAME}"
+    echo "ENDPOINT_TYPE: ${ENDPOINT_TYPE}"
+
+    # 確保資料目錄存在
+    mkdir -p "${REDIS_DATA_DIR}"
+    mkdir -p "${REDIS_CONF_DIR}"
+
+    # 複製預設配置到工作目錄
+    if [ -f /config/redis-default.conf ]; then
+        cp /config/redis-default.conf "${REDIS_CONF_FILE}"
+    else
+        echo "ERROR: /config/redis-default.conf not found!"
+        exit 1
+    fi
+
+    # 動態添加 cluster-announce 設定
+    {
+        echo ""
+        echo "# Dynamic cluster announce settings (auto-generated)"
+        if [ -n "${ANNOUNCE_HOSTNAME}" ]; then
+            echo "cluster-announce-hostname ${ANNOUNCE_HOSTNAME}"
+        fi
+        echo "cluster-announce-ip ${ANNOUNCE_IP}"
+        echo "cluster-announce-port {{ .Values.redis.containerPorts.redis }}"
+        echo "cluster-announce-bus-port {{ .Values.redis.containerPorts.bus }}"
+        echo "cluster-preferred-endpoint-type ${ENDPOINT_TYPE}"
+    } >> "${REDIS_CONF_FILE}"
+
+    # 設定密碼（如果有）
+    {{- if .Values.usePassword }}
+    if [ -n "${REDIS_PASSWORD}" ]; then
+        echo "requirepass ${REDIS_PASSWORD}" >> "${REDIS_CONF_FILE}"
+        echo "masterauth ${REDIS_PASSWORD}" >> "${REDIS_CONF_FILE}"
+    fi
+    {{- end }}
+
+    # 如果 nodes.conf 存在，更新其中的 IP 資訊
+    if [ -f "${NODES_CONF_FILE}" ]; then
+        echo "Found existing nodes.conf, updating IP information..."
+
+        # 備份原始檔案
+        cp "${NODES_CONF_FILE}" "${NODES_CONF_FILE}.bak"
+
+        # 取得此節點在 nodes.conf 中的 node ID（通過 myself 標記識別）
+        MYSELF_LINE=$(grep "myself" "${NODES_CONF_FILE}" || true)
+
+        if [ -n "${MYSELF_LINE}" ]; then
+            NODE_ID=$(echo "${MYSELF_LINE}" | awk '{print $1}')
+            OLD_IP_PORT=$(echo "${MYSELF_LINE}" | awk '{print $2}')
+            OLD_IP=$(echo "${OLD_IP_PORT}" | cut -d':' -f1)
+
+            echo "Node ID: ${NODE_ID}"
+            echo "Old IP: ${OLD_IP}"
+            echo "New IP: ${POD_IP}"
+
+            # 如果 IP 有變更，更新 nodes.conf
+            if [ "${OLD_IP}" != "${POD_IP}" ]; then
+                echo "IP changed, updating nodes.conf..."
+                sed -i "s/${OLD_IP}:{{ .Values.redis.containerPorts.redis }}@{{ .Values.redis.containerPorts.bus }}/${POD_IP}:{{ .Values.redis.containerPorts.redis }}@{{ .Values.redis.containerPorts.bus }}/g" "${NODES_CONF_FILE}"
+            fi
+        fi
+    fi
+
+    echo "Starting redis-server with config: ${REDIS_CONF_FILE}"
+    exec redis-server "${REDIS_CONF_FILE}"
+
   ping_readiness_local.sh: |-
     #!/bin/sh
     set -e

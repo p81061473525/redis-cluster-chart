@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(helm template:*)",
+      "Bash(helm lint:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}
