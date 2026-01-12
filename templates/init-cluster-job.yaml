@@ -1,49 +1,99 @@
+{{- if .Values.cluster.init }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: redis-cluster-init
+  name: {{ include "common.names.fullname" . }}-cluster-init
   namespace: {{ .Release.Namespace }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
   annotations:
-    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook": post-install
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "5"
 spec:
-  backoffLimit: 3
+  backoffLimit: 5
+  activeDeadlineSeconds: 600
   template:
     spec:
       restartPolicy: OnFailure
       containers:
         - name: redis-cluster-init
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: {{ include "redis-cluster.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.usePassword }}
           env:
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ template "redis-cluster.secretName" . }}
                   key: {{ template "redis-cluster.secretPasswordKey" . }}
+          {{- end }}
           command:
             - "sh"
             - "-c"
             - |
+              set -e
               NODES={{ .Values.cluster.nodes }}
+              REPLICAS={{ .Values.cluster.replicas }}
+              HEADLESS_SVC="{{ include "common.names.fullname" . }}-headless"
+              NAMESPACE="{{ .Release.Namespace }}"
+              PORT={{ .Values.redis.containerPorts.redis }}
+
+              {{- if .Values.usePassword }}
+              AUTH_ARGS="-a ${REDIS_PASSWORD}"
+              {{- else }}
+              AUTH_ARGS=""
+              {{- end }}
+
               echo "Waiting for all $NODES Redis pods to be ready..."
               i=0
               while [ $i -lt $NODES ]; do
-                until redis-cli -h redis-cluster-$i.redis-cluster-headless -a $REDIS_PASSWORD ping | grep PONG; do
-                  echo "Waiting for redis-cluster-$i..."
-                  sleep 2
+                POD_NAME="{{ include "common.names.fullname" . }}-${i}.${HEADLESS_SVC}.${NAMESPACE}.svc.{{ .Values.clusterDomain }}"
+                echo "Checking ${POD_NAME}..."
+                until redis-cli -h "${POD_NAME}" -p ${PORT} ${AUTH_ARGS} ping 2>/dev/null | grep -q PONG; do
+                  echo "Waiting for ${POD_NAME}..."
+                  sleep 3
                 done
+                echo "${POD_NAME} is ready"
                 i=$((i+1))
               done
+
+              # 檢查 cluster 是否已經存在
+              FIRST_NODE="{{ include "common.names.fullname" . }}-0.${HEADLESS_SVC}.${NAMESPACE}.svc.{{ .Values.clusterDomain }}"
+              CLUSTER_INFO=$(redis-cli -h "${FIRST_NODE}" -p ${PORT} ${AUTH_ARGS} CLUSTER INFO 2>/dev/null || true)
+
+              if echo "${CLUSTER_INFO}" | grep -q "cluster_state:ok"; then
+                echo "Cluster already exists and is healthy. Skipping creation."
+                exit 0
+              fi
+
+              if echo "${CLUSTER_INFO}" | grep -q "cluster_known_nodes:[2-9]"; then
+                echo "Cluster already has nodes configured. Skipping creation."
+                exit 0
+              fi
 
               echo "All Redis pods are ready. Creating cluster..."
               NODE_LIST=""
               i=0
               while [ $i -lt $NODES ]; do
-                NODE_LIST="$NODE_LIST redis-cluster-$i.redis-cluster-headless:6379"
+                POD_NAME="{{ include "common.names.fullname" . }}-${i}.${HEADLESS_SVC}.${NAMESPACE}.svc.{{ .Values.clusterDomain }}"
+                NODE_LIST="${NODE_LIST} ${POD_NAME}:${PORT}"
                 i=$((i+1))
               done
 
-              echo "Cluster nodes: $NODE_LIST"
-              redis-cli --cluster create $NODE_LIST --cluster-replicas 1 -a $REDIS_PASSWORD --cluster-yes
+              echo "Cluster nodes:${NODE_LIST}"
+              echo "Creating cluster with ${REPLICAS} replicas per master..."
 
-      serviceAccountName: default
+              redis-cli --cluster create ${NODE_LIST} \
+                --cluster-replicas ${REPLICAS} \
+                ${AUTH_ARGS} \
+                --cluster-yes
+
+              echo "Cluster created successfully!"
+
+              # 驗證 cluster 狀態
+              sleep 5
+              redis-cli -h "${FIRST_NODE}" -p ${PORT} ${AUTH_ARGS} CLUSTER INFO
+              redis-cli -h "${FIRST_NODE}" -p ${PORT} ${AUTH_ARGS} CLUSTER NODES
+
+      serviceAccountName: {{ include "redis-cluster.serviceAccountName" . }}
+{{- end }}

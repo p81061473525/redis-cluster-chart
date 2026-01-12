@@ -104,7 +104,7 @@ data:
     # You will also need to set a password unless you explicitly disable protected
     # mode.
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    bind 127.0.0.1 -::1
+    bind * -::*
 
     # By default, outgoing connections (from replica to master, from Sentinel to
     # instances, cluster bus, etc.) are not bound to a specific local address. In
@@ -128,7 +128,7 @@ data:
     # By default protected mode is enabled. You should disable it only if
     # you are sure you want clients from other hosts to connect to Redis
     # even if no authentication is configured.
-    protected-mode yes
+    protected-mode no
 
     # Redis uses default hardened security configuration directives to reduce the
     # attack surface on innocent users. Therefore, several sensitive configuration
@@ -358,7 +358,7 @@ data:
     #
     # Note that on modern Linux systems "/run/redis.pid" is more conforming
     # and should be used instead.
-    pidfile /opt/bitnami/redis/tmp/redis_6379.pid
+    pidfile /var/run/redis_6379.pid
 
     # Specify the server verbosity level.
     # This can be one of:
@@ -521,7 +521,7 @@ data:
     # The Append Only File will also be created inside this directory.
     #
     # Note that you must specify a directory here, not a file name.
-    dir /bitnami/redis/data
+    dir {{ .Values.persistence.path }}
 
     ################################# REPLICATION #################################
 
@@ -1601,7 +1601,7 @@ data:
     # Make sure that instances running in the same system do not have
     # overlapping cluster configuration file names.
     #
-    cluster-config-file /bitnami/redis/data/nodes.conf
+    cluster-config-file {{ .Values.persistence.path }}/nodes.conf
 
     # Cluster node timeout is the amount of milliseconds a node must be unreachable
     # for it to be considered in failure state.
