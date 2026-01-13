@@ -413,7 +413,36 @@ redis:
     - /bin/bash
     - -c
   args:
-    - >
+    - |
+      # Fix cluster IP on pod restart - update nodes.conf with current IP
+      NODES_CONF="/bitnami/redis/data/nodes.conf"
+      if [[ -f "$NODES_CONF" ]]; then
+          echo "Found existing nodes.conf, checking for IP changes..."
+          CURRENT_IP=$(hostname -i)
+          echo "Current pod IP: $CURRENT_IP"
+
+          # Get this node's ID from nodes.conf (the line with 'myself')
+          MY_NODE_LINE=$(grep "myself" "$NODES_CONF" || true)
+          if [[ -n "$MY_NODE_LINE" ]]; then
+              # Extract the old IP from nodes.conf
+              OLD_IP=$(echo "$MY_NODE_LINE" | awk '{print $2}' | cut -d':' -f1)
+              echo "Old IP in nodes.conf: $OLD_IP"
+
+              if [[ "$OLD_IP" != "$CURRENT_IP" && -n "$OLD_IP" && "$OLD_IP" != "0.0.0.0" ]]; then
+                  echo "IP changed from $OLD_IP to $CURRENT_IP, updating nodes.conf..."
+                  sed -i "s/${OLD_IP}:/${CURRENT_IP}:/g" "$NODES_CONF"
+                  echo "nodes.conf updated successfully"
+                  cat "$NODES_CONF"
+              else
+                  echo "IP unchanged or invalid, skipping update"
+              fi
+          else
+              echo "No 'myself' entry found in nodes.conf"
+          fi
+      else
+          echo "No existing nodes.conf found, first startup"
+      fi
+
       exec redis-server /opt/bitnami/redis/etc/redis-default.conf --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
 
   # args:

@@ -105,6 +105,27 @@ spec:
               if ! [[ -f /opt/bitnami/redis/etc/redis.conf ]]; then
                   cp /opt/bitnami/redis/etc/redis-default.conf /opt/bitnami/redis/etc/redis.conf
               fi
+
+              # Fix cluster IP on pod restart
+              NODES_CONF="{{ .Values.persistence.path }}/nodes.conf"
+              if [[ -f "$NODES_CONF" ]]; then
+                  echo "Found existing nodes.conf, updating IP addresses..."
+                  CURRENT_IP=$(hostname -i)
+                  echo "Current pod IP: $CURRENT_IP"
+
+                  MY_NODE_LINE=$(grep "myself" "$NODES_CONF" || true)
+                  if [[ -n "$MY_NODE_LINE" ]]; then
+                      OLD_IP=$(echo "$MY_NODE_LINE" | awk '{print $2}' | cut -d':' -f1)
+                      echo "Old IP in nodes.conf: $OLD_IP"
+
+                      if [[ "$OLD_IP" != "$CURRENT_IP" && -n "$OLD_IP" && "$OLD_IP" != "0.0.0.0" ]]; then
+                          echo "IP changed from $OLD_IP to $CURRENT_IP, updating nodes.conf..."
+                          sed -i "s/${OLD_IP}:/${CURRENT_IP}:/g" "$NODES_CONF"
+                          echo "nodes.conf updated successfully"
+                      fi
+                  fi
+              fi
+
               pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
               pod_index="${pod_index[-1]}"
               ips=($(echo "{{ .Values.cluster.externalAccess.service.loadBalancerIP }}" | cut -d [ -f2 | cut -d ] -f 1))
@@ -129,6 +150,38 @@ spec:
                   echo COPYING FILE
                   cp  /opt/bitnami/redis/etc/redis-default.conf /opt/bitnami/redis/etc/redis.conf
               fi
+
+              # Fix cluster IP on pod restart
+              NODES_CONF="{{ .Values.persistence.path }}/nodes.conf"
+              if [[ -f "$NODES_CONF" ]]; then
+                  echo "Found existing nodes.conf, updating IP addresses..."
+                  # Get current pod IP
+                  CURRENT_IP=$(hostname -i)
+                  echo "Current pod IP: $CURRENT_IP"
+
+                  # Get this node's ID from nodes.conf (the line with 'myself')
+                  MY_NODE_LINE=$(grep "myself" "$NODES_CONF" || true)
+                  if [[ -n "$MY_NODE_LINE" ]]; then
+                      # Extract the old IP from nodes.conf
+                      OLD_IP=$(echo "$MY_NODE_LINE" | awk '{print $2}' | cut -d':' -f1)
+                      echo "Old IP in nodes.conf: $OLD_IP"
+
+                      if [[ "$OLD_IP" != "$CURRENT_IP" && -n "$OLD_IP" && "$OLD_IP" != "0.0.0.0" ]]; then
+                          echo "IP changed from $OLD_IP to $CURRENT_IP, updating nodes.conf..."
+                          # Replace old IP with new IP in nodes.conf
+                          sed -i "s/${OLD_IP}:/${CURRENT_IP}:/g" "$NODES_CONF"
+                          echo "nodes.conf updated successfully"
+                          cat "$NODES_CONF"
+                      else
+                          echo "IP unchanged or invalid, skipping update"
+                      fi
+                  else
+                      echo "No 'myself' entry found in nodes.conf, might be first startup"
+                  fi
+              else
+                  echo "No existing nodes.conf found, first startup"
+              fi
+
               {{- if .Values.cluster.init }}
               pod_index=($(echo "$POD_NAME" | tr "-" "\n"))
               pod_index="${pod_index[-1]}"
