@@ -13,7 +13,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: redis-cluster-init
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: {{ include "redis-cluster.image" . }}
           env:
             - name: REDIS_PASSWORD
               valueFrom:

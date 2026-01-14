@@ -43,7 +43,7 @@ spec:
       {{- end }}
       containers:
         - name: trigger
-          image: library/redis:{{ .Values.image.tag }}
+          image: {{ include "redis-cluster.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
           command: ['/bin/bash', '-c']
           args:
