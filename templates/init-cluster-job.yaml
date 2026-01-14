@@ -21,6 +21,9 @@ spec:
       containers:
         - name: redis-cluster-init
           image: {{ include "redis-cluster.image" . }}
+          {{- if .Values.initJob.resources }}
+          resources: {{- toYaml .Values.initJob.resources | nindent 12 }}
+          {{- end }}
           env:
             - name: REDIS_PASSWORD
               valueFrom:

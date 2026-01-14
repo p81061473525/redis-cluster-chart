@@ -694,6 +694,16 @@ initJob:
   ##   argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
   ##
   annotations: {}
+  ## @param initJob.resources.limits The resources limits for the container
+  ## @param initJob.resources.requests The requested resources for the container
+  ##
+  resources:
+    limits:
+      cpu: 20m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 64Mi
 
 ## @section Cluster update job parameters
 ##
