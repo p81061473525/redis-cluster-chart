@@ -409,11 +409,30 @@ podSecurityPolicy:
 ##
 
 redis:
-  ## @param redis.command Redis command to run (uses template default if empty)
-  ## @param redis.args Redis args (uses template default with IP fix if empty)
-  ## IP fix logic is built into the template - no need to override here
-  command: []
-  args: []
+  command:
+    - /bin/bash
+    - -c
+  args:
+    - |
+      # Update nodes.conf IP if pod IP changed (for cluster recovery after restart)
+      NODES_CONF="/bitnami/redis/data/nodes.conf"
+      if [[ -f "$NODES_CONF" ]]; then
+        echo "Found existing nodes.conf, updating IP addresses..."
+        POD_IP=$(hostname -i)
+        echo "Current pod IP: $POD_IP"
+        # Extract IP from the line containing "myself" - format: <node_id> <ip>:<port>@<bus_port> ... myself,...
+        OLD_IP=$(grep 'myself' "$NODES_CONF" | awk '{print $2}' | cut -d: -f1)
+        echo "Old IP in nodes.conf: $OLD_IP"
+        if [[ -n "$OLD_IP" && "$OLD_IP" != "$POD_IP" ]]; then
+          echo "Updating IP from $OLD_IP to $POD_IP"
+          sed -i "s/$OLD_IP/$POD_IP/g" "$NODES_CONF"
+          echo "IP updated successfully"
+        else
+          echo "IP unchanged or not found, skipping update"
+        fi
+      fi
+      # Start Redis server with cluster config
+      exec redis-server /opt/bitnami/redis/etc/redis-default.conf --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
 
   # args:
   #   - >
@@ -855,10 +874,10 @@ cluster:
     ## @param cluster.update.addNodes Boolean to specify if you want to add nodes after the upgrade
     ## Setting this to true a hook will add nodes to the Redis&reg; cluster after the upgrade. currentNumberOfNodes and currentNumberOfReplicas is required
     ##
-    addNodes: true
+    addNodes: false
     ## @param cluster.update.currentNumberOfNodes Number of currently deployed Redis&reg; nodes
     ##
-    currentNumberOfNodes: 6
+    currentNumberOfNodes: 8
     ## @param cluster.update.currentNumberOfReplicas Number of currently deployed Redis&reg; replicas
     ##
     currentNumberOfReplicas: 1
