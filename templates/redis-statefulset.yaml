@@ -106,9 +106,9 @@ spec:
               pod_index="${pod_index[-1]}"
               ips=($(echo "{{ .Values.cluster.externalAccess.service.loadBalancerIP }}" | cut -d [ -f2 | cut -d ] -f 1))
               {{- if .Values.cluster.externalAccess.hostMode }}
-              ANNOUNCE_IP="${ips[$pod_index]}"
+              REDIS_CLUSTER_ANNOUNCE_HOSTNAME="${ips[$pod_index]}"
               {{- else }}
-              ANNOUNCE_IP="${ips[$pod_index]}"
+              REDIS_CLUSTER_ANNOUNCE_IP="${ips[$pod_index]}"
               {{- end }}
               # Update nodes.conf IP if pod IP changed
               NODES_CONF="{{ .Values.persistence.path }}/nodes.conf"
@@ -125,11 +125,18 @@ spec:
                   echo "IP updated successfully"
                 fi
               fi
-              # Start Redis server with cluster config and external announce IP
+              # Start Redis server with cluster config and external announce
+              {{- if .Values.cluster.externalAccess.hostMode }}
               exec redis-server /opt/bitnami/redis/etc/redis-default.conf \
                 --requirepass "$REDIS_PASSWORD" \
                 --masterauth "$REDIS_PASSWORD" \
-                --cluster-announce-ip "$ANNOUNCE_IP"
+                --cluster-announce-hostname "$REDIS_CLUSTER_ANNOUNCE_HOSTNAME"
+              {{- else }}
+              exec redis-server /opt/bitnami/redis/etc/redis-default.conf \
+                --requirepass "$REDIS_PASSWORD" \
+                --masterauth "$REDIS_PASSWORD" \
+                --cluster-announce-ip "$REDIS_CLUSTER_ANNOUNCE_IP"
+              {{- end }}
           {{- else }}
           args:
             - |
