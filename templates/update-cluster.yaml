@@ -14,7 +14,10 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
+    {{- if .Values.updateJob.helmHook }}
     "helm.sh/hook": {{ .Values.updateJob.helmHook }}
+    "helm.sh/hook-delete-policy": {{ .Values.updateJob.helmHookDeletePolicy | default "before-hook-creation,hook-succeeded" }}
+    {{- end }}
     {{- if or .Values.updateJob.annotations .Values.commonAnnotations }}
     {{- $annotations := include "common.tplvalues.merge" ( dict "values" ( list .Values.updateJob.annotations .Values.commonAnnotations ) "context" . ) }}
     {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $) | nindent 4 }}
