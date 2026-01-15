@@ -1,11 +1,17 @@
+{{- /*
+Copyright VMware, Inc.
+SPDX-License-Identifier: APACHE-2.0
+*/}}
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: redis-cluster-scripts
-  namespace: default
-  labels:
-    app.kubernetes.io/name: redis-cluster
-    app.kubernetes.io/instance: redis-cluster
+  name: {{ include "common.names.fullname" . }}-scripts
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
 data:
   ping_readiness_local.sh: |-
     #!/bin/sh
@@ -13,12 +19,12 @@ data:
 
     REDIS_STATUS_FILE=/tmp/.redis_cluster_check
 
-    # 設定密碼環境變數
+    # Set password environment variable
     if [ -n "$REDIS_PASSWORD" ]; then
       export REDISCLI_AUTH=$REDIS_PASSWORD
     fi
 
-    # 測試是否可連線
+    # Test Redis connectivity
     response=$(
       timeout -s 15 $1 \
       redis-cli \
@@ -37,7 +43,7 @@ data:
       exit 1
     fi
 
-    # Cluster 狀態檢查
+    # Check cluster state
     if [ ! -f "$REDIS_STATUS_FILE" ]; then
       response=$(
         timeout -s 15 $1 \

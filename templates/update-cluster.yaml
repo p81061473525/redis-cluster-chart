@@ -1,6 +1,6 @@
 {{- /*
-Redis Cluster Update Job (Bitnami 官方 image)
-自動將新增 StatefulSet Pod 加入 cluster
+Redis Cluster Update Job (Bitnami official image)
+Automatically add new StatefulSet Pods to the cluster
 */ -}}
 
 {{- if and .Values.cluster.update.addNodes (or (and .Values.cluster.externalAccess.enabled .Values.cluster.externalAccess.service.loadBalancerIP) (not .Values.cluster.externalAccess.enabled)) }}
@@ -53,7 +53,7 @@ spec:
             - |
               echo "Starting Redis cluster update..."
 
-              # 如果有設定密碼
+              # If password is configured
               {{- if .Values.usePassword }}
               {{- if .Values.usePasswordFile }}
               export REDISCLI_AUTH=$(cat /opt/redis/secrets/redis-password)
@@ -65,7 +65,7 @@ spec:
               firstNodeIP="{{ template "common.names.fullname" . }}-0.{{ template "common.names.fullname" . }}-headless"
               echo "First node: $firstNodeIP"
 
-              # 內部 StatefulSet 擴容
+              # Internal StatefulSet scaling
               currentMasterNodesNum=$(( {{ .Values.cluster.update.currentNumberOfNodes }} / (( {{ .Values.cluster.update.currentNumberOfReplicas }} + 1 )) ))
               slaveNodesEndPos=$(( {{ .Values.cluster.update.currentNumberOfNodes }} + (($REDIS_CLUSTER_REPLICAS - {{ .Values.cluster.update.currentNumberOfReplicas }})) * $currentMasterNodesNum ))
 
@@ -89,7 +89,7 @@ spec:
                 done
               done
 
-              # 重新平衡 Cluster
+              # Rebalance the cluster
               until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
                 echo "Rebalance failed, retrying..."
                 sleep 5
