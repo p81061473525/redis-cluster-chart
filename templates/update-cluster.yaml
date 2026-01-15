@@ -1,6 +1,6 @@
 {{- /*
-Redis Cluster Update Job (Bitnami 官方 image)
-自動將新增 StatefulSet Pod 加入 cluster
+Redis Cluster Update Job (Bitnami official image)
+Automatically add new StatefulSet Pods to the cluster
 */ -}}
 
 {{- if and .Values.cluster.update.addNodes (or (and .Values.cluster.externalAccess.enabled .Values.cluster.externalAccess.service.loadBalancerIP) (not .Values.cluster.externalAccess.enabled)) }}
@@ -14,7 +14,10 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
   annotations:
+    {{- if .Values.updateJob.helmHook }}
     "helm.sh/hook": {{ .Values.updateJob.helmHook }}
+    "helm.sh/hook-delete-policy": {{ .Values.updateJob.helmHookDeletePolicy | default "before-hook-creation,hook-succeeded" }}
+    {{- end }}
     {{- if or .Values.updateJob.annotations .Values.commonAnnotations }}
     {{- $annotations := include "common.tplvalues.merge" ( dict "values" ( list .Values.updateJob.annotations .Values.commonAnnotations ) "context" . ) }}
     {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $) | nindent 4 }}
@@ -43,14 +46,14 @@ spec:
       {{- end }}
       containers:
         - name: trigger
-          image: library/redis:{{ .Values.image.tag }}
+          image: {{ include "redis-cluster.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
           command: ['/bin/bash', '-c']
           args:
             - |
               echo "Starting Redis cluster update..."
 
-              # 如果有設定密碼
+              # If password is configured
               {{- if .Values.usePassword }}
               {{- if .Values.usePasswordFile }}
               export REDISCLI_AUTH=$(cat /opt/redis/secrets/redis-password)
@@ -62,7 +65,7 @@ spec:
               firstNodeIP="{{ template "common.names.fullname" . }}-0.{{ template "common.names.fullname" . }}-headless"
               echo "First node: $firstNodeIP"
 
-              # 內部 StatefulSet 擴容
+              # Internal StatefulSet scaling
               currentMasterNodesNum=$(( {{ .Values.cluster.update.currentNumberOfNodes }} / (( {{ .Values.cluster.update.currentNumberOfReplicas }} + 1 )) ))
               slaveNodesEndPos=$(( {{ .Values.cluster.update.currentNumberOfNodes }} + (($REDIS_CLUSTER_REPLICAS - {{ .Values.cluster.update.currentNumberOfReplicas }})) * $currentMasterNodesNum ))
 
@@ -86,7 +89,7 @@ spec:
                 done
               done
 
-              # 重新平衡 Cluster
+              # Rebalance the cluster
               until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
                 echo "Rebalance failed, retrying..."
                 sleep 5

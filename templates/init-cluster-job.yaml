@@ -3,9 +3,16 @@ kind: Job
 metadata:
   name: redis-cluster-init
   namespace: {{ .Release.Namespace }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
   annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    {{- if .Values.initJob.helmHook }}
+    "helm.sh/hook": {{ .Values.initJob.helmHook }}
+    "helm.sh/hook-delete-policy": {{ .Values.initJob.helmHookDeletePolicy | default "before-hook-creation,hook-succeeded" }}
+    {{- end }}
+    {{- if or .Values.initJob.annotations .Values.commonAnnotations }}
+    {{- $annotations := include "common.tplvalues.merge" ( dict "values" ( list .Values.initJob.annotations .Values.commonAnnotations ) "context" . ) }}
+    {{- include "common.tplvalues.render" ( dict "value" $annotations "context" $) | nindent 4 }}
+    {{- end }}
 spec:
   backoffLimit: 3
   template:
@@ -13,7 +20,10 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: redis-cluster-init
-          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          image: {{ include "redis-cluster.image" . }}
+          {{- if .Values.initJob.resources }}
+          resources: {{- toYaml .Values.initJob.resources | nindent 12 }}
+          {{- end }}
           env:
             - name: REDIS_PASSWORD
               valueFrom:

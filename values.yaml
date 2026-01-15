@@ -409,13 +409,19 @@ podSecurityPolicy:
 ##
 
 redis:
-  command:
-    - /bin/bash
-    - -c
-  args:
-    - >
-      exec redis-server /opt/bitnami/redis/etc/redis-default.conf --requirepass "$REDIS_PASSWORD" --masterauth "$REDIS_PASSWORD"
+  ## @param redis.command Redis command to run
+  ## If not set, uses default from template with IP fix logic
+  ##
+  command: []
+  ## @param redis.args Redis args
+  ## If not set, uses default from template with IP fix logic for cluster recovery
+  ##
+  args: []
 
+  # Example custom args (uncomment to override template defaults):
+  # command:
+  #   - /bin/bash
+  #   - -c
   # args:
   #   - >
   #     if ! [[ -f /opt/bitnami/redis/etc/redis.conf ]]; then
@@ -669,6 +675,36 @@ redis:
   ##
   topologySpreadConstraints: []
 
+## @section Cluster init job parameters
+##
+
+## Cluster init job settings
+##
+initJob:
+  ## @param initJob.helmHook Job Helm hook (set to "" to disable for ArgoCD)
+  ## https://helm.sh/docs/topics/charts_hooks/#the-available-hooks
+  ##
+  helmHook: post-install
+  ## @param initJob.helmHookDeletePolicy Job Helm hook delete policy
+  ##
+  helmHookDeletePolicy: before-hook-creation,hook-succeeded
+  ## @param initJob.annotations Job annotations (use for ArgoCD hooks)
+  ## Example for ArgoCD:
+  ##   argocd.argoproj.io/hook: Sync
+  ##   argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+  ##
+  annotations: {}
+  ## @param initJob.resources.limits The resources limits for the container
+  ## @param initJob.resources.requests The requested resources for the container
+  ##
+  resources:
+    limits:
+      cpu: 20m
+      memory: 128Mi
+    requests:
+      cpu: 20m
+      memory: 64Mi
+
 ## @section Cluster update job parameters
 ##
 
@@ -688,11 +724,17 @@ updateJob:
   ## https://kubernetes.io/docs/concepts/services-networking/add-entries-to-pod-etc-hosts-with-host-aliases/
   ##
   hostAliases: []
-  ## @param updateJob.helmHook Job Helm hook
+  ## @param updateJob.helmHook Job Helm hook (set to "" to disable for ArgoCD)
   ## https://helm.sh/docs/topics/charts_hooks/#the-available-hooks
   ##
   helmHook: post-upgrade
-  ## @param updateJob.annotations Job annotations
+  ## @param updateJob.helmHookDeletePolicy Job Helm hook delete policy
+  ##
+  helmHookDeletePolicy: before-hook-creation,hook-succeeded
+  ## @param updateJob.annotations Job annotations (use for ArgoCD hooks)
+  ## Example for ArgoCD:
+  ##   argocd.argoproj.io/hook: Sync
+  ##   argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
   ##
   annotations: {}
   ## @param updateJob.podAnnotations Job pod annotations
@@ -856,10 +898,10 @@ cluster:
     ## @param cluster.update.addNodes Boolean to specify if you want to add nodes after the upgrade
     ## Setting this to true a hook will add nodes to the Redis&reg; cluster after the upgrade. currentNumberOfNodes and currentNumberOfReplicas is required
     ##
-    addNodes: true
+    addNodes: false
     ## @param cluster.update.currentNumberOfNodes Number of currently deployed Redis&reg; nodes
     ##
-    currentNumberOfNodes: 6
+    currentNumberOfNodes: 8
     ## @param cluster.update.currentNumberOfReplicas Number of currently deployed Redis&reg; replicas
     ##
     currentNumberOfReplicas: 1
