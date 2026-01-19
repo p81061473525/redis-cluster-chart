@@ -21,9 +21,9 @@ Access the pod you want to debug by executing
 
   kubectl exec --namespace {{ .Release.Namespace }} -ti <NAME OF THE POD> -- bash
 
-In order to replicate the container startup scripts execute this command:
+In order to start redis manually execute this command:
 
-    /opt/bitnami/scripts/redis-cluster/entrypoint.sh /opt/bitnami/scripts/redis-cluster/run.sh
+    redis-server /etc/redis/redis-default.conf
 
 {{- else }}
 

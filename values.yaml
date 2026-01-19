@@ -302,8 +302,8 @@ persistence:
   enabled: true
   ## @param persistence.path Path to mount the volume at, to use other images Redis&reg; images.
   ##
-  path: /bitnami/redis/data
-  # path: /data
+  # path: /bitnami/redis/data  # Legacy bitnami path
+  path: /data
   ## @param persistence.subPath The subdirectory of the volume to mount to, useful in dev environments and one PV for multiple services
   ##
   subPath: ""
@@ -529,10 +529,10 @@ redis:
   # 使用 configmap 注入 redis.conf
   configmap: |
     cluster-enabled yes
-    cluster-config-file /bitnami/redis/data/nodes.conf
+    cluster-config-file /data/nodes.conf
     cluster-node-timeout 5000
     appendonly yes
-    dir /bitnami/redis/data
+    dir /data
     protected-mode no
     bind 0.0.0.0
   ## @param redis.extraEnvVars An array to add extra environment variables

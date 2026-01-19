@@ -358,7 +358,7 @@ data:
     #
     # Note that on modern Linux systems "/run/redis.pid" is more conforming
     # and should be used instead.
-    pidfile /opt/bitnami/redis/tmp/redis_6379.pid
+    pidfile /var/run/redis_6379.pid
 
     # Specify the server verbosity level.
     # This can be one of:
@@ -521,7 +521,7 @@ data:
     # The Append Only File will also be created inside this directory.
     #
     # Note that you must specify a directory here, not a file name.
-    dir /bitnami/redis/data
+    dir /data
 
     ################################# REPLICATION #################################
 
@@ -1601,7 +1601,7 @@ data:
     # Make sure that instances running in the same system do not have
     # overlapping cluster configuration file names.
     #
-    cluster-config-file /bitnami/redis/data/nodes.conf
+    cluster-config-file /data/nodes.conf
 
     # Cluster node timeout is the amount of milliseconds a node must be unreachable
     # for it to be considered in failure state.
