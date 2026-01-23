@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(helm list:*)",
+      "Bash(helm history:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(helm upgrade:*)",
+      "Bash(pkill:*)",
+      "Bash(helm template:*)",
+      "Bash(helm rollback:*)",
+      "Bash(helm get manifest:*)",
+      "Bash(kubectl rollout status:*)",
+      "Bash(helm uninstall:*)",
+      "Bash(git checkout:*)",
+      "Bash(helm install:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: use proper REDIS_CLUSTER_ANNOUNCE_* variables for external access\n\n- hostMode: use REDIS_CLUSTER_ANNOUNCE_HOSTNAME with --cluster-announce-hostname\n- non-hostMode: use REDIS_CLUSTER_ANNOUNCE_IP with --cluster-announce-ip\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)",
+      "Bash(git commit:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git pull:*)",
+      "Bash(kubectl cluster-info:*)",
+      "Bash(kubectl config:*)"
+    ]
+  }
+}

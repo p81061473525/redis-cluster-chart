@@ -535,6 +535,7 @@ redis:
     dir /data
     protected-mode no
     bind 0.0.0.0
+    pidfile ""
   ## @param redis.extraEnvVars An array to add extra environment variables
   ## For example:
   ##  - name: BEARER_AUTH
@@ -898,7 +899,7 @@ cluster:
     ## @param cluster.update.addNodes Boolean to specify if you want to add nodes after the upgrade
     ## Setting this to true a hook will add nodes to the Redis&reg; cluster after the upgrade. currentNumberOfNodes and currentNumberOfReplicas is required
     ##
-    addNodes: false
+    addNodes: true
     ## @param cluster.update.currentNumberOfNodes Number of currently deployed Redis&reg; nodes
     ##
     currentNumberOfNodes: 8
