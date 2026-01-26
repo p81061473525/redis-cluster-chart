@@ -89,16 +89,34 @@ spec:
                 done
               done
 
-              # Rebalance the cluster
-              until redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; do
-                echo "Rebalance failed, retrying..."
+              # Fix any stuck slots before rebalancing
+              echo "Fixing any cluster issues before rebalance..."
+              redis-cli --cluster fix "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-yes || true
+
+              # Rebalance the cluster with retry and auto-fix
+              MAX_RETRIES=10
+              RETRY_COUNT=0
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if redis-cli --cluster rebalance "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-use-empty-masters; then
+                  echo "Rebalance completed successfully!"
+                  break
+                fi
+                echo "Rebalance failed, fixing cluster and retrying... ($((RETRY_COUNT+1))/$MAX_RETRIES)"
+                redis-cli --cluster fix "${firstNodeIP}:{{ .Values.redis.containerPorts.redis }}" --cluster-yes || true
                 sleep 5
+                RETRY_COUNT=$((RETRY_COUNT+1))
               done
+
+              if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+                echo "WARNING: Rebalance did not complete after $MAX_RETRIES retries"
+              fi
 
               echo "Redis cluster update completed!"
           env:
             - name: BITNAMI_DEBUG
               value: {{ ternary "true" "false" .Values.image.debug | quote }}
+            - name: REDIS_CLUSTER_REPLICAS
+              value: {{ .Values.cluster.replicas | quote }}
             {{- if .Values.usePassword }}
             {{- if .Values.usePasswordFile }}
             - name: REDIS_PASSWORD_FILE

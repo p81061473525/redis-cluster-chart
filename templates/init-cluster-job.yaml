@@ -35,11 +35,13 @@ spec:
             - "-c"
             - |
               NODES={{ .Values.cluster.nodes }}
+              FULLNAME="{{ include "common.names.fullname" . }}"
+              HEADLESS="${FULLNAME}-headless"
               echo "Waiting for all $NODES Redis pods to be ready..."
               i=0
               while [ $i -lt $NODES ]; do
-                until redis-cli -h redis-cluster-$i.redis-cluster-headless -a $REDIS_PASSWORD ping | grep PONG; do
-                  echo "Waiting for redis-cluster-$i..."
+                until redis-cli -h ${FULLNAME}-$i.${HEADLESS} -a $REDIS_PASSWORD ping | grep PONG; do
+                  echo "Waiting for ${FULLNAME}-$i..."
                   sleep 2
                 done
                 i=$((i+1))
@@ -49,7 +51,7 @@ spec:
               NODE_LIST=""
               i=0
               while [ $i -lt $NODES ]; do
-                NODE_LIST="$NODE_LIST redis-cluster-$i.redis-cluster-headless:6379"
+                NODE_LIST="$NODE_LIST ${FULLNAME}-$i.${HEADLESS}:6379"
                 i=$((i+1))
               done
 
